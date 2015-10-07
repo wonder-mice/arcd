@@ -166,7 +166,7 @@ arcd_char_t arcd_dec_get(arcd_dec *const d)
 		d->v_bits = RANGE_BITS;
 	}
 	arcd_prob prob;
-	const arcd_char_t ch = d->getch(d->v, d->state.range, &prob, d->state.prob_ctx);
+	const arcd_char_t ch = d->getch(d->v - d->state.lower, d->state.range, &prob, d->state.prob_ctx);
 	zoom_in(&d->state, &prob);
 	for (;;)
 	{
