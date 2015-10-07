@@ -1,6 +1,7 @@
 #include <vector>
 #include <string>
 #include <sstream>
+#include <numeric>
 #include <arcd.h>
 
 #ifndef _countof
@@ -10,18 +11,18 @@
 
 namespace
 {
-	void getprob(const arcd_char_t ch, arcd_prob *const prob, void *const ctx)
+	typedef std::vector<arcd_prob> model_t;
+
+	void getprob(const arcd_char_t ch, arcd_prob *const prob, void *const model)
 	{
-		const std::vector<arcd_prob> *const probs =
-				static_cast<const std::vector<arcd_prob> *>(ctx);
+		const model_t *const probs = static_cast<const model_t *>(model);
 		*prob = probs->at(ch);
 	}
 
 	arcd_char_t getch(const arcd_range_t v, const arcd_range_t range,
-					  arcd_prob *const prob, void *const ctx)
+					  arcd_prob *const prob, void *const model)
 	{
-		const std::vector<arcd_prob> *const probs =
-				static_cast<const std::vector<arcd_prob> *>(ctx);
+		const model_t *const probs = static_cast<const model_t *>(model);
 		for (size_t i = probs->size(); 0 < i--;)
 		{
 			const arcd_prob &p = probs->at(i);
@@ -35,19 +36,18 @@ namespace
 		return -1;
 	}
 
-	void output(const arcd_buf_t buf, const unsigned buf_bits,
-					void *const ctx)
+	void output(const arcd_buf_t buf, const unsigned buf_bits, void *const io)
 	{
-		std::ostringstream *const s = static_cast<std::ostringstream *>(ctx);
+		std::ostringstream *const s = static_cast<std::ostringstream *>(io);
 		for (unsigned i = buf_bits; 0 < i--;)
 		{
 			s->put(1 & (buf >> i)? '1': '0');
 		}
 	}
 
-	unsigned input(arcd_buf_t *const buf, void *const ctx)
+	unsigned input(arcd_buf_t *const buf, void *const io)
 	{
-		std::istringstream *const s =static_cast<std::istringstream *>(ctx);
+		std::istringstream *const s =static_cast<std::istringstream *>(io);
 		std::istringstream::char_type ch;
 		unsigned bits;
 		for (bits = 0; BITS(*buf) > bits && *s >> ch; ++bits)
@@ -57,30 +57,52 @@ namespace
 		return bits;
 	}
 
+	model_t mk_model(const std::vector<arcd_range_t> &ps)
+	{
+		const arcd_range_t sum = std::accumulate(ps.begin(), ps.end(), 0);
+		arcd_range_t lower = 0;
+		model_t model(ps.size());
+		for (size_t i = 0, e = ps.size(); e > i; ++i)
+		{
+			const arcd_range_t upper = lower + ps[i];
+			arcd_prob &prob = model[i];
+			prob.lower = lower;
+			prob.upper = upper;
+			prob.range = sum;
+			lower = upper;
+		}
+		return model;
+	}
+
 	struct test_case
 	{
-		const std::vector<arcd_prob> probs;
+		const model_t model;
 		const std::vector<arcd_char_t> in;
 		const std::string out;
 	};
 
 	const test_case c_test_cases[] =
 	{
-		/*
-		{{{0, 2, 4}, {2, 4, 4}}, {}, ""},
-		{{{0, 2, 4}, {2, 4, 4}}, {0}, "0"},
-		{{{0, 2, 4}, {2, 4, 4}}, {1}, "1"},
-		{{{0, 2, 4}, {2, 4, 4}}, {1, 0, 1, 0}, "1010"},
-		{{{0, 2, 4}, {2, 4, 4}}, {0, 1, 0, 1}, "0101"},
-		{{{0, 2, 4}, {2, 4, 4}}, {1, 1, 1, 1}, "1111"},
-		{{{0, 2, 4}, {2, 4, 4}}, {0, 0, 0, 0}, "0000"},
-		{{{0, 8, 64}, {8, 64, 64}}, {1}, "1"},
-		{{{0, 8, 64}, {8, 64, 64}}, {1, 1}, "1"},
-		{{{0, 8, 64}, {8, 64, 64}}, {1, 1, 1, 1}, "1"},
-		{{{0, 8, 64}, {8, 64, 64}}, {1, 1, 1, 1, 1}, "1"},
-			*/
-		{{{0, 8, 64}, {8, 64, 64}}, {1, 1, 1, 1, 1, 1}, "11"},
-		//{{{0, 1, 12}, {1, 5, 12}, {5, 12, 12}}, {2, 2, 2, 2}, "1"},
+		{mk_model({2, 2}), {}, ""},
+		{mk_model({2, 2}), {0}, "0"},
+		{mk_model({2, 2}), {1}, "1"},
+		{mk_model({2, 2}), {1, 0, 1, 0}, "1010"},
+		{mk_model({2, 2}), {0, 1, 0, 1}, "0101"},
+		{mk_model({2, 2}), {1, 1, 1, 1}, "1111"},
+		{mk_model({2, 2}), {0, 0, 0, 0}, "0000"},
+		{mk_model({8, 56}), {1}, "1"},
+		{mk_model({8, 56}), {1, 1}, "1"},
+		{mk_model({8, 56}), {1, 1, 1, 1}, "1"},
+		{mk_model({8, 56}), {1, 1, 1, 1, 1}, "1"},
+		{mk_model({8, 56}), {1, 1, 1, 1, 1, 1}, "11"},
+		{mk_model({56, 8}), {0}, "0"},
+		{mk_model({56, 8}), {0, 0}, "0"},
+		{mk_model({56, 8}), {0, 0, 0, 0}, "0"},
+		{mk_model({56, 8}), {0, 0, 0, 0, 0}, "0"},
+		{mk_model({56, 8}), {0, 0, 0, 0, 0, 0}, "00"},
+		{mk_model({2, 4, 2}), {1}, "01"},
+		{mk_model({2, 4, 2}), {1, 1}, "011"},
+		{mk_model({2, 4, 2}), {1, 1, 1}, "0111"},
 	};
 
 	bool run_tests()
@@ -91,7 +113,7 @@ namespace
 			const test_case &tc = c_test_cases[i];
 			arcd_enc enc;
 			std::ostringstream out;
-			arcd_enc_init(&enc, (void *)&tc.probs, &out);
+			arcd_enc_init(&enc, const_cast<model_t *>(&tc.model), &out);
 			enc.output = output;
 			enc.getprob = getprob;
 			for (size_t k = 0; tc.in.size() > k; ++k)
@@ -109,7 +131,7 @@ namespace
 			}
 			arcd_dec dec;
 			std::istringstream in(outstr);
-			arcd_dec_init(&dec, (void *)&tc.probs, &in);
+			arcd_dec_init(&dec, const_cast<model_t *>(&tc.model), &in);
 			dec.input = input;
 			dec.getch = getch;
 			for (size_t k = 0; tc.in.size() > k; ++k)

@@ -15,15 +15,15 @@ static const arcd_range_t RANGE_ONE_FOURTHS = RANGE_MAX / 4;
 static const arcd_range_t RANGE_THREE_FOURTHS = 3 * RANGE_ONE_FOURTHS;
 
 static void state_init(arcd_state *const state,
-					   void *const prob_ctx, void *const io_ctx)
+					   void *const model, void *const io)
 {
 	state->lower = RANGE_MIN;
 	state->upper = RANGE_MAX;
 	state->range = RANGE_MAX - RANGE_MIN;
 	state->buf = 0;
 	state->buf_bits= 0;
-	state->prob_ctx = prob_ctx;
-	state->io_ctx = io_ctx;
+	state->model = model;
+	state->io = io;
 }
 
 static void output_bit(arcd_enc *const e, const unsigned bit)
@@ -32,7 +32,7 @@ static void output_bit(arcd_enc *const e, const unsigned bit)
 	e->state.buf = e->state.buf << 1 | bit;
 	if (BITS(e->state.buf) == ++e->state.buf_bits)
 	{
-		e->output(e->state.buf, e->state.buf_bits, e->state.io_ctx);
+		e->output(e->state.buf, e->state.buf_bits, e->state.io);
 		// Setting buf to 0 is not necessary, but simplifies debugging.
 		e->state.buf = 0;
 		e->state.buf_bits = 0;
@@ -53,7 +53,7 @@ static unsigned input_bit(arcd_dec *const d)
 {
 	if (0 == d->state.buf_bits)
 	{
-		if (0 == (d->state.buf_bits = d->input(&d->state.buf, d->state.io_ctx)))
+		if (0 == (d->state.buf_bits = d->input(&d->state.buf, d->state.io)))
 		{
 			// If real input is empty, then it can be continued by infinite
 			// amount of 0s or 1s (or a mix of).
@@ -79,16 +79,16 @@ static void zoom_in(arcd_state *const state, arcd_prob *const prob)
 	state->lower = state->lower + (state->range * prob->lower) / prob->range;
 }
 
-void arcd_enc_init(arcd_enc *const e, void *const prob_ctx, void *const io_ctx)
+void arcd_enc_init(arcd_enc *const e, void *const model, void *const io)
 {
-	state_init(&e->state, prob_ctx, io_ctx);
+	state_init(&e->state, model, io);
 	e->pending = 0;
 }
 
 void arcd_enc_put(arcd_enc *const e, const arcd_char_t ch)
 {
 	arcd_prob prob;
-	e->getprob(ch, &prob, e->state.prob_ctx);
+	e->getprob(ch, &prob, e->state.model);
 	zoom_in(&e->state, &prob);
 	for (;;)
 	{
@@ -121,7 +121,7 @@ void arcd_enc_put(arcd_enc *const e, const arcd_char_t ch)
 
 void arcd_enc_fin(arcd_enc *const e)
 {
-	if (0 == e->state.lower)
+	if (0 == e->state.lower && 0 == e->pending)
 	{
 		assert(RANGE_ONE_HALF < e->state.upper);
 		if (RANGE_MAX != e->state.upper)
@@ -129,7 +129,7 @@ void arcd_enc_fin(arcd_enc *const e)
 			output_bits(e, 0);
 		}
 	}
-	else if (RANGE_MAX == e->state.upper)
+	else if (RANGE_MAX == e->state.upper && 0 == e->pending)
 	{
 		assert(RANGE_ONE_HALF > e->state.lower);
 		if (0 != e->state.lower)
@@ -139,18 +139,17 @@ void arcd_enc_fin(arcd_enc *const e)
 	}
 	else
 	{
-		++e->pending;
 		output_bits(e, RANGE_ONE_FOURTHS <= e->state.lower);
 	}
 	if (0 != e->state.buf_bits)
 	{
-		e->output(e->state.buf, e->state.buf_bits, e->state.io_ctx);
+		e->output(e->state.buf, e->state.buf_bits, e->state.io);
 	}
 }
 
-void arcd_dec_init(arcd_dec *const d, void *const prob_ctx, void *const io_ctx)
+void arcd_dec_init(arcd_dec *const d, void *const model, void *const io)
 {
-	state_init(&d->state, prob_ctx, io_ctx);
+	state_init(&d->state, model, io);
 	d->v = 0;
 	d->v_bits = 0;
 }
@@ -166,7 +165,7 @@ arcd_char_t arcd_dec_get(arcd_dec *const d)
 		d->v_bits = RANGE_BITS;
 	}
 	arcd_prob prob;
-	const arcd_char_t ch = d->getch(d->v - d->state.lower, d->state.range, &prob, d->state.prob_ctx);
+	const arcd_char_t ch = d->getch(d->v - d->state.lower, d->state.range, &prob, d->state.model);
 	zoom_in(&d->state, &prob);
 	for (;;)
 	{

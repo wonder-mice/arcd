@@ -43,8 +43,8 @@ typedef struct arcd_state
 	arcd_range_t range;
 	arcd_buf_t buf;
 	unsigned buf_bits;
-	void *prob_ctx;
-	void *io_ctx;
+	void *model;
+	void *io;
 }
 arcd_state;
 
@@ -52,8 +52,8 @@ typedef struct arcd_enc
 {
 	arcd_state state;
 	unsigned pending;
-	void (*getprob)(arcd_char_t ch, arcd_prob *prob, void *ctx);
-	void (*output)(arcd_buf_t buf, unsigned buf_bits, void *ctx);
+	void (*getprob)(arcd_char_t ch, arcd_prob *prob, void *model);
+	void (*output)(arcd_buf_t buf, unsigned buf_bits, void *io);
 }
 arcd_enc;
 
@@ -63,16 +63,16 @@ typedef struct arcd_dec
 	arcd_range_t v;
 	unsigned v_bits;
 	arcd_char_t (*getch)(arcd_range_t v, arcd_range_t range, arcd_prob *prob,
-						 void *ctx);
-	unsigned (*input)(arcd_buf_t *buf, void *ctx);
+						 void *model);
+	unsigned (*input)(arcd_buf_t *buf, void *io);
 }
 arcd_dec;
 
-void arcd_enc_init(arcd_enc *const e, void *const prob_ctx, void *const io_ctx);
+void arcd_enc_init(arcd_enc *const e, void *const model, void *const io);
 void arcd_enc_put(arcd_enc *const e, const arcd_char_t ch);
 void arcd_enc_fin(arcd_enc *const e);
 
-void arcd_dec_init(arcd_dec *const d, void *const prob_ctx, void *const io_ctx);
+void arcd_dec_init(arcd_dec *const d, void *const model, void *const io);
 arcd_char_t arcd_dec_get(arcd_dec *const d);
 
 #ifdef __cplusplus
