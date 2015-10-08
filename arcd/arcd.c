@@ -63,6 +63,8 @@ static unsigned input_bit(arcd_dec *const d)
 	if (BITS(d->state.buf) < d->state.buf_bits)
 	{
 		// If input is empty, any return value will work.
+		// Aparently there could be a mod that expects that 0s are used to
+		// for input continuation. That will reduce the size of some sequences.
 		return 0;
 	}
 	return 1 & (d->state.buf >> --d->state.buf_bits);
