@@ -76,6 +76,7 @@ namespace
 
 	struct test_case
 	{
+		const std::string name;
 		const model_t model;
 		const std::vector<arcd_char_t> in;
 		const std::string out;
@@ -83,33 +84,36 @@ namespace
 
 	const test_case c_test_cases[] =
 	{
-		/*
-		{mk_model({2, 2}), {}, ""},
-		{mk_model({2, 2}), {0}, "0"},
-		{mk_model({2, 2}), {1}, "1"},
-		{mk_model({2, 2}), {1, 0, 1, 0}, "1010"},
-		{mk_model({2, 2}), {0, 1, 0, 1}, "0101"},
-		{mk_model({2, 2}), {1, 1, 1, 1}, "1111"},
-		{mk_model({2, 2}), {0, 0, 0, 0}, "0000"},
-		{mk_model({8, 56}), {1}, "1"},
-		{mk_model({8, 56}), {1, 1}, "1"},
-		{mk_model({8, 56}), {1, 1, 1, 1}, "1"},
-		{mk_model({8, 56}), {1, 1, 1, 1, 1}, "1"},
-		{mk_model({8, 56}), {1, 1, 1, 1, 1, 1}, "11"},
-		{mk_model({56, 8}), {0}, "0"},
-		{mk_model({56, 8}), {0, 0}, "0"},
-		{mk_model({56, 8}), {0, 0, 0, 0}, "0"},
-		{mk_model({56, 8}), {0, 0, 0, 0, 0}, "0"},
-		{mk_model({56, 8}), {0, 0, 0, 0, 0, 0}, "00"},
-		{mk_model({2, 4, 2}), {1}, "01"},
-		{mk_model({2, 4, 2}), {1, 1}, "011"},
-		{mk_model({2, 4, 2}), {1, 1, 1}, "0111"},
-		{mk_model({2, 4, 2}), {1, 1, 1}, "0111"},
-		{mk_model({4, 1, 8, 3}), {0}, "00"},
-		{mk_model({4, 1, 8, 3}), {1}, "0100"},
-			*/
-		{mk_model({4, 1, 8, 3}), {2}, "10"},
-		//{mk_model({4, 1, 8, 3}), {3}, "111"},
+		{"0a", mk_model({}), {}, ""},
+		{"0b", mk_model({1}), {}, ""},
+		{"0c", mk_model({1}), {0}, ""},
+		{"0d", mk_model({1}), {0, 0}, ""},
+		{"0e", mk_model({1}), {0, 0, 0}, ""},
+		{"1a", mk_model({2, 2}), {}, ""},
+		{"1b", mk_model({2, 2}), {0}, "0"},
+		{"1c", mk_model({2, 2}), {1}, "1"},
+		{"1d", mk_model({2, 2}), {1, 0, 1, 0}, "1010"},
+		{"1e", mk_model({2, 2}), {0, 1, 0, 1}, "0101"},
+		{"1f", mk_model({2, 2}), {1, 1, 1, 1}, "1111"},
+		{"1g", mk_model({2, 2}), {0, 0, 0, 0}, "0000"},
+		{"2a", mk_model({8, 56}), {1}, "1"},
+		{"2b", mk_model({8, 56}), {1, 1}, "1"},
+		{"2c", mk_model({8, 56}), {1, 1, 1, 1}, "1"},
+		{"2d", mk_model({8, 56}), {1, 1, 1, 1, 1}, "1"},
+		{"2e", mk_model({8, 56}), {1, 1, 1, 1, 1, 1}, "11"},
+		{"3a", mk_model({56, 8}), {0}, "0"},
+		{"3b", mk_model({56, 8}), {0, 0}, "0"},
+		{"3c", mk_model({56, 8}), {0, 0, 0, 0}, "0"},
+		{"3d", mk_model({56, 8}), {0, 0, 0, 0, 0}, "0"},
+		{"3e", mk_model({56, 8}), {0, 0, 0, 0, 0, 0}, "00"},
+		{"4a", mk_model({2, 4, 2}), {1}, "01"},
+		{"4b", mk_model({2, 4, 2}), {1, 1}, "011"},
+		{"4c", mk_model({2, 4, 2}), {1, 1, 1}, "0111"},
+		{"4d", mk_model({2, 4, 2}), {1, 1, 1}, "0111"},
+		{"5a", mk_model({4, 1, 8, 3}), {0}, "00"},
+		{"5b", mk_model({4, 1, 8, 3}), {1}, "0100"},
+		{"5c", mk_model({4, 1, 8, 3}), {2}, "10"},
+		{"5d", mk_model({4, 1, 8, 3}), {3}, "111"},
 	};
 
 	bool run_tests()
@@ -131,7 +135,8 @@ namespace
 			const std::string outstr = out.str();
 			if (tc.out != outstr)
 			{
-				fprintf(stderr, "Test case #%zu (encode) failed:\n", i);
+				fprintf(stderr, "Test case #%zu \"%s\" (encode) failed:\n",
+						i, tc.name.c_str());
 				fprintf(stderr, "    Actual output:   %s\n", outstr.c_str());
 				fprintf(stderr, "    Expected output: %s\n", tc.out.c_str());
 				ok = false;
@@ -146,7 +151,8 @@ namespace
 				const arcd_char_t ch = arcd_dec_get(&dec);
 				if (tc.in[k] != ch)
 				{
-					fprintf(stderr, "Test case #%zu (decode) failed at #%zu:\n", i, k);
+					fprintf(stderr, "Test case #%zu \"%s\" (decode) failed at #%zu:\n",
+							i, tc.name.c_str(), k);
 					fprintf(stderr, "    Actual symbol:   %u\n", ch);
 					fprintf(stderr, "    Expected symbol: %u\n", tc.in[k]);
 					ok = false;

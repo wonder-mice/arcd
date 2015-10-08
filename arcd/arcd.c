@@ -141,6 +141,11 @@ void arcd_enc_fin(arcd_enc *const e)
 	}
 	else
 	{
+		if (e->state.lower >= RANGE_ONE_FOURTHS ||
+			e->state.upper <= RANGE_THREE_FOURTHS)
+		{
+			++e->pending;
+		}
 		output_bits(e, RANGE_ONE_FOURTHS <= e->state.lower);
 	}
 	if (0 != e->state.buf_bits)
