@@ -74,6 +74,7 @@ static void zoom_in(arcd_state *const state, arcd_prob *const prob)
 {
 	assert(state->lower < state->upper);
 	assert(state->range == state->upper - state->lower);
+	assert(0 == state->range % 2);
 	assert(prob->lower < prob->upper);
 	assert(prob->upper <= prob->range);
 	assert(prob->range <= RANGE_MAX);
