@@ -9,6 +9,17 @@ def partial_sums(a):
 def transpose(a):
 	return zip(*a)
 
+def join(a):
+	return reduce(lambda c, x: c + x, a, [])
+
+def indexof(a, b, e, f):
+	for i in range(b, e):
+		if f(a[i]): return i
+	return e
+
+def str_to_list(s):
+	return map(lambda v: int(v.strip()), s.split(","))
+
 def symbol(i):
 	if 0 > i: return "-"
 	if 10 > i: return str(i)
@@ -30,7 +41,7 @@ def gen_intervals(model, length):
 	intervals = []
 	for cprob in partial_sums(model):
 		hi = length * cprob / n
-		interval = [symbol(ch) * (hi - lo)]
+		interval = [[ch] * (hi - lo)]
 		if n <= hi - lo:
 			interval += gen_intervals(model, hi - lo)
 		intervals.append(interval)
@@ -39,27 +50,79 @@ def gen_intervals(model, length):
 	m = len(max(intervals, key=lambda x: len(x)))
 	for interval in intervals:
 		while len(interval) < m:
-			interval.append(symbol(-1) * len(interval[0]))
-	return map(lambda x: "".join(x), transpose(intervals))
+			interval.append([-1] * len(interval[0]))
+	return map(join, transpose(intervals))
 
-def printable(line):
-	return "".join(map(lambda v: str(v), line))
+def encode_range(intervals, binary, sequence):
+	n = len(intervals[0])
+	lo, hi = 0, n
+	for i in range(len(sequence)):
+		ch = sequence[i]
+		if i >= len(intervals):
+			return (-1, (lo, hi))
+		line = intervals[i]
+		sublo = indexof(line, lo, hi, lambda x: ch == x)
+		subhi = indexof(line, sublo, hi, lambda x: ch != x)
+		if sublo == subhi:
+			return (-1, (lo, hi))
+		lo = sublo
+		hi = subhi
+	for i in range(len(binary)):
+		line = binary[i]
+		sublo = hi
+		subhi = lo
+		for k in range(lo, hi):
+			if 0 == k or line[k - 1] != line[k]:
+				sublo = k
+				break
+		for k in range(hi, lo, -1):
+			if n == k or line[k - 1] != line[k]:
+				subhi = k
+				break
+		if sublo < subhi:
+			lo = sublo
+			hi = subhi
+			return (i + 1, (lo, hi))
+	return (-1, (lo, hi))
+
+def printable(line, marks=None, mark="|"):
+	xs = map(lambda v: symbol(v), line)
+	if marks is not None:
+		for i in reversed(marks):
+			xs.insert(i, mark)
+	return "".join(xs)
 
 def main(argv):
 	parser = argparse.ArgumentParser(description="Generates range coder map.")
-	parser.add_argument("-m", "--model", metavar='MODEL', required=True,
+	parser.add_argument("-m", "--model", metavar="MODEL", required=True,
 			help="Probabilities, example: \"1, 2, 4\"")
-	parser.add_argument("-b", "--bits", metavar='N', type=int, required=True,
+	parser.add_argument("-b", "--bits", metavar="N", type=int, required=True,
 			help="Bit count")
+	parser.add_argument("-e", "--encode", metavar="SEQUENCE", default=None,
+			help="Sequence to encode, example: \"0, 2, 1\"")
 	args = parser.parse_args(argv)
 
-	model = map(lambda v: int(v.strip()), args.model.split(","))
+	if 0 >= args.bits:
+		print >> sys.stderr, "Error: bit count must be > 0"
+		return 1
+	model = str_to_list(args.model)
 	binary = gen_binary(args.bits)
 	intervals = gen_intervals(model, len(binary[0]))
+	marks = []
+	cutoff = None
+	if args.encode is not None:
+		sequence = str_to_list(args.encode)
+		bits, marks = encode_range(intervals, binary, sequence)
+		cutoff = bits
+		if 0 > bits:
+			print >> sys.stderr, "Warning: not enough bits to fully encode the sequence"
+
 	for line in intervals:
-		print printable(line)
-	for line in binary:
-		print printable(line)
+		print printable(line, marks)
+	for i in range(len(binary)):
+		if cutoff == i:
+			print "~" * (len(binary[0]) + len(marks))
+		print printable(binary[i], marks)
 	return 0
 
 if __name__ == "__main__":
