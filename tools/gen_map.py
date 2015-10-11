@@ -85,12 +85,34 @@ def encode_range(intervals, binary, sequence):
 			return (i + 1, (lo, hi))
 	return (-1, (lo, hi))
 
-def printable(line, marks=None, mark="|"):
+def cut_width(intervals, binary, marks, width):
+	length = len(binary[0])
+	lo, hi = marks[0], marks[-1]
+	if lo < width: lo = 0
+	else: lo -= width
+	if hi + width >= length: hi = length
+	else: hi += width
+	intervals = map(lambda x: x[lo:hi], intervals)
+	binary = map(lambda x: x[lo:hi], binary)
+	marks = map(lambda x: x - lo, marks)
+	return intervals, binary, marks
+
+def list_to_str(line, marks=None, mark="|"):
 	xs = map(lambda v: symbol(v), line)
 	if marks is not None:
 		for i in reversed(marks):
 			xs.insert(i, mark)
 	return "".join(xs)
+
+def print_map(intervals, binary, marks, bits):
+	length = len(binary[0]) + len(marks)
+	for i in range(len(intervals)):
+		print list_to_str(intervals[i], marks)
+	print "=" * length
+	for i in range(len(binary)):
+		if bits == i:
+			print "~" * length
+		print list_to_str(binary[i], marks)
 
 def main(argv):
 	parser = argparse.ArgumentParser(description="Generates range coder map.")
@@ -100,6 +122,8 @@ def main(argv):
 			help="Bit count")
 	parser.add_argument("-e", "--encode", metavar="SEQUENCE", default=None,
 			help="Sequence to encode, example: \"0, 2, 1\"")
+	parser.add_argument("-w", "--width", metavar="WIDTH", type=int, default=None,
+			help="Width of output around found interval")
 	args = parser.parse_args(argv)
 
 	if 0 >= args.bits:
@@ -108,21 +132,17 @@ def main(argv):
 	model = str_to_list(args.model)
 	binary = gen_binary(args.bits)
 	intervals = gen_intervals(model, len(binary[0]))
-	marks = []
-	cutoff = None
+	encode_marks = None
+	encode_bits = None
 	if args.encode is not None:
 		sequence = str_to_list(args.encode)
-		bits, marks = encode_range(intervals, binary, sequence)
-		cutoff = bits
-		if 0 > bits:
+		encode_bits, encode_marks = encode_range(intervals, binary, sequence)
+		if 0 > encode_bits:
 			print >> sys.stderr, "Warning: not enough bits to fully encode the sequence"
 
-	for line in intervals:
-		print printable(line, marks)
-	for i in range(len(binary)):
-		if cutoff == i:
-			print "~" * (len(binary[0]) + len(marks))
-		print printable(binary[i], marks)
+	if encode_marks is not None and args.width is not None:
+		intervals, binary, encode_marks = cut_width(intervals, binary, encode_marks, args.width)
+	print_map(intervals, binary, encode_marks, encode_bits)
 	return 0
 
 if __name__ == "__main__":
