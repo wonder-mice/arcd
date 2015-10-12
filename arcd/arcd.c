@@ -123,7 +123,7 @@ void arcd_enc_put(arcd_enc *const e, const arcd_char_t ch)
 
 void arcd_enc_fin(arcd_enc *const e)
 {
-	if (0 == e->state.lower && 0 == e->pending)
+	if (RANGE_MIN == e->state.lower && 0 == e->pending)
 	{
 		assert(RANGE_ONE_HALF < e->state.upper);
 		if (RANGE_MAX != e->state.upper)
