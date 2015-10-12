@@ -24,6 +24,7 @@
 extern "C" {
 #endif
 
+/* Type for alphabet symbol. */
 typedef unsigned arcd_char_t;
 typedef unsigned arcd_range_t;
 typedef unsigned char arcd_buf_t;

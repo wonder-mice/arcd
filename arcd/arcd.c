@@ -141,8 +141,7 @@ void arcd_enc_fin(arcd_enc *const e)
 	}
 	else
 	{
-		if (e->state.lower >= RANGE_ONE_FOURTHS ||
-			e->state.upper <= RANGE_THREE_FOURTHS)
+		if (RANGE_MIN != e->state.lower && RANGE_MAX != e->state.upper)
 		{
 			++e->pending;
 		}
