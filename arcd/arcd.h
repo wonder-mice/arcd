@@ -66,7 +66,7 @@ typedef unsigned arcd_range_t;
  * particular requirements for this type.
  */
 typedef unsigned char arcd_buf_t;
-/* Private type that can hold result of multiplication freq on range without
+/* Private type that can hold result of multiplication of freq on range without
  * overflowing.
  */
 typedef unsigned _arcd_value_t;
@@ -93,7 +93,31 @@ typedef struct arcd_prob
 }
 arcd_prob;
 
-/* Internal state shared between encoder and decoder. */
+/* Encoder callback. Will be called once per arcd_enc_put() call. Encoder uses
+ * it to get cumulative probability range for a symbol being encoded.
+ */
+typedef void (*arcd_getprob_t)(arcd_char_t ch, arcd_prob *prob, void *model);
+/* Encoder callback. Encoder uses it to output encoded binary stream. Buffer has
+ * buf_bits valid most significant bits. The only time when buf_bits could be
+ * less than total amount of bits in buf is when it's called the last time from
+ * arcd_enc_fin().
+ */
+typedef void (*acrd_output_t)(arcd_buf_t buf, unsigned buf_bits, void *io);
+/* Decoder callback. Will be called once per arcd_dec_get() call. Decoder uses
+ * it to get symbol with cumulative probability range that contains v / range.
+ * Callback can use arcd_freq_scale() to scale v and range for current frequency
+ * total value. Callback also returns corresponding cumulative probability range
+ * in prob.
+ */
+typedef arcd_char_t (*arcd_getch_t)(arcd_range_t v, arcd_range_t range,
+									arcd_prob *prob, void *model);
+/* Decoder callback. Decoder uses it when it needs more bits to decode next
+ * symbol. Callback returns number of valid most significant bits in buffer.
+ * Once callback returns 0 it will not be called again. In that case decoder
+ * will use 0's to continue the input stream.
+ */
+typedef unsigned (*arcd_input_t)(arcd_buf_t *buf, void *io);
+
 typedef struct _arcd_state
 {
 	arcd_range_t lower;
@@ -106,13 +130,7 @@ typedef struct _arcd_state
 }
 _arcd_state;
 
-typedef void (*arcd_getprob_t)(arcd_char_t ch, arcd_prob *prob, void *model);
-typedef void (*acrd_output_t)(arcd_buf_t buf, unsigned buf_bits, void *io);
-typedef arcd_char_t (*arcd_getch_t)(arcd_range_t v, arcd_range_t range,
-									arcd_prob *prob, void *model);
-typedef unsigned (*arcd_input_t)(arcd_buf_t *buf, void *io);
-
-/* Arithmetic encoder. Must be initialized*/
+/* Arithmetic encoder. Must be initialized with arcd_enc_init(). */
 typedef struct arcd_enc
 {
 	_arcd_state _state;
@@ -122,27 +140,52 @@ typedef struct arcd_enc
 }
 arcd_enc;
 
+/* Arithmetic decoder. Must be initialized with arcd_dec_init(). */
 typedef struct arcd_dec
 {
 	_arcd_state _state;
 	arcd_range_t _v;
 	unsigned _v_bits;
+	unsigned _fin;
 	arcd_getch_t _getch;
 	arcd_input_t _input;
 }
 arcd_dec;
 
+/* Initializes arithmetic encoder. Parameters model and io are for external use
+ * and passed to getprob and output callbacks as is.
+ */
 void arcd_enc_init(arcd_enc *const e,
 				   const arcd_getprob_t getprob, void *const model,
 				   const acrd_output_t output, void *const io);
+/* Encodes one symbol. Will call getprob() callback once. Will call output()
+ * callback 0 or more times.
+ */
 void arcd_enc_put(arcd_enc *const e, const arcd_char_t ch);
+/* Finalizes encoded binary sequence. Will call output() callback 0 or more
+ * times.
+ */
 void arcd_enc_fin(arcd_enc *const e);
 
+/* Initializes arithmetic decoder. Parameters model and io are for external use
+ * and passed to getch and input callbacks as is.
+ */
 void arcd_dec_init(arcd_dec *const d,
 				   const arcd_getch_t getch, void *const model,
 				   const arcd_input_t input, void *const io);
+/* Decodes one symbol. Will call getch() callback once. Will call input()
+ * callback 0 or more times. Because of the nature of arithmetic coder this
+ * function can be called infinite times. Thus you need some whay to identify
+ * the end of decoded sequence. One way is to put length at the start of encoded
+ * stream. Another way is to extend alphabet by 1 additional "end of stream"
+ * symbol and encode it last. In some cases length of the stream could be known
+ * out of the context (e.g. chess board has 64 cells).
+ */
 arcd_char_t arcd_dec_get(arcd_dec *const d);
 
+/* Scales value from range (used by coder) to frequency (used by model).
+ * Useful inside arcd_getch_t() callback.
+ */
 static inline
 arcd_freq_t arcd_freq_scale(const arcd_range_t v, const arcd_range_t range,
 							const arcd_freq_t total)

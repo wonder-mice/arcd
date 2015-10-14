@@ -15,8 +15,9 @@ STATIC_ASSERT(range_times_freq_not_overflow,
 STATIC_ASSERT(range_one_fourth_contains_freqs,
 		ARCD_RANGE_BITS >= ARCD_FREQ_BITS + 2);
 
-/* This constants have a bit different semantic from ARCD_RANGE_XXX values.
- *
+/* This constants have a bit different semantic from ARCD_RANGE_XXX values which
+ * mostly describe the type itself. This values define intervals used by the
+ * coder.
  */
 static const unsigned RANGE_BITS = ARCD_RANGE_BITS;
 static const arcd_range_t RANGE_MIN = 0;
@@ -24,6 +25,12 @@ static const arcd_range_t RANGE_MAX = ARCD_RANGE_MAX;
 static const arcd_range_t RANGE_ONE_HALF = RANGE_MAX / 2;
 static const arcd_range_t RANGE_ONE_FOURTH = RANGE_MAX / 4;
 static const arcd_range_t RANGE_THREE_FOURTH = 3 * RANGE_ONE_FOURTH;
+/* Bit used to extend encoded bit stream past its end. Currently can be set to
+ * either 0 or 1. However, encoder can have a small optimization to remove last
+ * sequence on CONTINUATION_BITs from the output (since decoder will insert them
+ * back anyway).
+ */
+static const unsigned CONTINUATION_BIT = 0;
 
 static void state_init(_arcd_state *const state,
 					   void *const model, void *const io)
@@ -44,8 +51,6 @@ static void output_bit(arcd_enc *const e, const unsigned bit)
 	if (BITS(e->_state.buf) == ++e->_state.buf_bits)
 	{
 		e->_output(e->_state.buf, e->_state.buf_bits, e->_state.io);
-		// Setting buf to 0 is not necessary, but simplifies debugging.
-		e->_state.buf = 0;
 		e->_state.buf_bits = 0;
 	}
 }
@@ -62,21 +67,18 @@ static void output_bits(arcd_enc *const e, const unsigned bit)
 
 static unsigned input_bit(arcd_dec *const d)
 {
+	if (d->_fin)
+	{
+		return CONTINUATION_BIT;
+	}
 	if (0 == d->_state.buf_bits)
 	{
-		if (0 == (d->_state.buf_bits = d->_input(&d->_state.buf, d->_state.io)))
+		d->_state.buf_bits = d->_input(&d->_state.buf, d->_state.io);
+		if (0 == d->_state.buf_bits)
 		{
-			// If real input is empty, then it can be continued by infinite
-			// amount of 0s or 1s (or a mix of).
-			d->_state.buf_bits = ~0;
+			d->_fin = !d->_fin;
+			return CONTINUATION_BIT;
 		}
-	}
-	if (BITS(d->_state.buf) < d->_state.buf_bits)
-	{
-		// If input is empty, any return value will work.
-		// Aparently there could be a mod that expects that 0s are used to
-		// for input continuation. That will reduce the size of some sequences.
-		return 0;
 	}
 	return 1 & (d->_state.buf >> --d->_state.buf_bits);
 }
@@ -177,6 +179,7 @@ void arcd_dec_init(arcd_dec *const d,
 	state_init(&d->_state, model, io);
 	d->_v = 0;
 	d->_v_bits = 0;
+	d->_fin = 0;
 	d->_getch = getch;
 	d->_input = input;
 }
