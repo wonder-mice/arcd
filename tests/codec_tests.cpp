@@ -26,7 +26,7 @@ namespace
 		for (size_t i = probs->size(); 0 < i--;)
 		{
 			const arcd_prob &p = probs->at(i);
-			const arcd_range_t vs = v * p.range / range;
+			const arcd_freq_t vs = arcd_dec_map(v, range, p.total);
 			if (p.lower <= vs && vs < p.upper)
 			{
 				*prob = p;
@@ -68,7 +68,7 @@ namespace
 			arcd_prob &prob = model[i];
 			prob.lower = lower;
 			prob.upper = upper;
-			prob.range = sum;
+			prob.total = sum;
 			lower = upper;
 		}
 		return model;
@@ -145,9 +145,8 @@ namespace
 			const test_case &tc = c_test_cases[i];
 			arcd_enc enc;
 			std::ostringstream out;
-			arcd_enc_init(&enc, const_cast<model_t *>(&tc.model), &out);
-			enc.output = output;
-			enc.getprob = getprob;
+			arcd_enc_init(&enc, getprob, const_cast<model_t *>(&tc.model),
+						  output, &out);
 			for (size_t k = 0; tc.in.size() > k; ++k)
 			{
 				arcd_enc_put(&enc, tc.in[k]);
