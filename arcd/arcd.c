@@ -6,26 +6,26 @@
 
 #define BITS(n) (8 * sizeof(n))
 
-//FIXME: Use closed intervals
-static const unsigned RANGE_BITS = ARCD_RANGE_BITS;
-static const arcd_range_t RANGE_MIN = 0;
-static const arcd_range_t RANGE_MAX = ARCD_RANGE_MAX;
-static const arcd_range_t RANGE_ONE_HALF = RANGE_MAX / 2;
-static const arcd_range_t RANGE_ONE_FOURTHS = RANGE_MAX / 4;
-static const arcd_range_t RANGE_THREE_FOURTHS = 3 * RANGE_ONE_FOURTHS;
-
-typedef unsigned value_t;
-
 STATIC_ASSERT(freq_bits_fits_in_type,
 		ARCD_FREQ_BITS <= BITS(arcd_freq_t));
 STATIC_ASSERT(range_bits_fits_in_type,
 		ARCD_RANGE_BITS <= BITS(arcd_range_t));
-STATIC_ASSERT(name,
-		ARCD_RANGE_BITS + ARCD_FREQ_BITS <= BITS(value_t));
-STATIC_ASSERT(name1,
+STATIC_ASSERT(range_times_freq_not_overflow,
+		ARCD_RANGE_BITS + ARCD_FREQ_BITS <= BITS(_arcd_value_t));
+STATIC_ASSERT(range_one_fourth_contains_freqs,
 		ARCD_RANGE_BITS >= ARCD_FREQ_BITS + 2);
 
-static void state_init(arcd_state *const state,
+/* This constants have a bit different semantic from ARCD_RANGE_XXX values.
+ *
+ */
+static const unsigned RANGE_BITS = ARCD_RANGE_BITS;
+static const arcd_range_t RANGE_MIN = 0;
+static const arcd_range_t RANGE_MAX = ARCD_RANGE_MAX;
+static const arcd_range_t RANGE_ONE_HALF = RANGE_MAX / 2;
+static const arcd_range_t RANGE_ONE_FOURTH = RANGE_MAX / 4;
+static const arcd_range_t RANGE_THREE_FOURTH = 3 * RANGE_ONE_FOURTH;
+
+static void state_init(_arcd_state *const state,
 					   void *const model, void *const io)
 {
 	state->lower = RANGE_MIN;
@@ -62,40 +62,41 @@ static void output_bits(arcd_enc *const e, const unsigned bit)
 
 static unsigned input_bit(arcd_dec *const d)
 {
-	if (0 == d->state.buf_bits)
+	if (0 == d->_state.buf_bits)
 	{
-		if (0 == (d->state.buf_bits = d->input(&d->state.buf, d->state.io)))
+		if (0 == (d->_state.buf_bits = d->_input(&d->_state.buf, d->_state.io)))
 		{
 			// If real input is empty, then it can be continued by infinite
 			// amount of 0s or 1s (or a mix of).
-			d->state.buf_bits = ~0;
+			d->_state.buf_bits = ~0;
 		}
 	}
-	if (BITS(d->state.buf) < d->state.buf_bits)
+	if (BITS(d->_state.buf) < d->_state.buf_bits)
 	{
 		// If input is empty, any return value will work.
 		// Aparently there could be a mod that expects that 0s are used to
 		// for input continuation. That will reduce the size of some sequences.
 		return 0;
 	}
-	return 1 & (d->state.buf >> --d->state.buf_bits);
+	return 1 & (d->_state.buf >> --d->_state.buf_bits);
 }
 
-static void zoom_in(arcd_state *const state, arcd_prob *const prob)
+static void zoom_in(_arcd_state *const state, arcd_prob *const prob)
 {
+	assert(state->upper <= ARCD_RANGE_MAX);
 	assert(state->lower < state->upper);
 	assert(state->range == state->upper - state->lower);
 	assert(prob->lower < prob->upper);
 	assert(prob->upper <= prob->total);
-	//FIXME: Not RANGE_MAX, but RANGE_MAX / 4
-	assert(prob->total <= RANGE_MAX);
-	state->upper = state->lower + (state->range * prob->upper) / prob->total;
-	state->lower = state->lower + (state->range * prob->lower) / prob->total;
+	assert(prob->total <= ARCD_FREQ_MAX);
+	const _arcd_value_t range = state->range;
+	state->upper = state->lower + prob->upper * range / prob->total;
+	state->lower = state->lower + prob->lower * range / prob->total;
 }
 
 void arcd_enc_init(arcd_enc *const e,
-				   arcd_getprob_f *const getprob, void *const model,
-				   acrd_output_f *const output, void *const io)
+				   const arcd_getprob_t getprob, void *const model,
+				   const acrd_output_t output, void *const io)
 {
 	state_init(&e->_state, model, io);
 	e->_getprob = getprob;
@@ -122,12 +123,12 @@ void arcd_enc_put(arcd_enc *const e, const arcd_char_t ch)
 			e->_state.lower = 2 * (e->_state.lower - RANGE_ONE_HALF);
 			e->_state.upper = 2 * (e->_state.upper - RANGE_ONE_HALF);
 		}
-		else if (e->_state.lower >= RANGE_ONE_FOURTHS &&
-				 e->_state.upper <= RANGE_THREE_FOURTHS)
+		else if (e->_state.lower >= RANGE_ONE_FOURTH &&
+				 e->_state.upper <= RANGE_THREE_FOURTH)
 		{
 			++e->_pending;
-			e->_state.lower = 2 * (e->_state.lower - RANGE_ONE_FOURTHS);
-			e->_state.upper = 2 * (e->_state.upper - RANGE_ONE_FOURTHS);
+			e->_state.lower = 2 * (e->_state.lower - RANGE_ONE_FOURTH);
+			e->_state.upper = 2 * (e->_state.upper - RANGE_ONE_FOURTH);
 		}
 		else
 		{
@@ -161,7 +162,7 @@ void arcd_enc_fin(arcd_enc *const e)
 		{
 			++e->_pending;
 		}
-		output_bits(e, RANGE_ONE_FOURTHS <= e->_state.lower);
+		output_bits(e, RANGE_ONE_FOURTH <= e->_state.lower);
 	}
 	if (0 != e->_state.buf_bits)
 	{
@@ -169,52 +170,56 @@ void arcd_enc_fin(arcd_enc *const e)
 	}
 }
 
-void arcd_dec_init(arcd_dec *const d, void *const model, void *const io)
+void arcd_dec_init(arcd_dec *const d,
+				   const arcd_getch_t getch, void *const model,
+				   const arcd_input_t input, void *const io)
 {
-	state_init(&d->state, model, io);
-	d->v = 0;
-	d->v_bits = 0;
+	state_init(&d->_state, model, io);
+	d->_v = 0;
+	d->_v_bits = 0;
+	d->_getch = getch;
+	d->_input = input;
 }
 
 arcd_char_t arcd_dec_get(arcd_dec *const d)
 {
-	if (0 == d->v_bits)
+	if (0 == d->_v_bits)
 	{
 		for (unsigned i = RANGE_BITS; 0 < i--;)
 		{
-			d->v = d->v << 1 | input_bit(d);
+			d->_v = d->_v << 1 | input_bit(d);
 		}
-		d->v_bits = RANGE_BITS;
+		d->_v_bits = RANGE_BITS;
 	}
 	arcd_prob prob;
-	const arcd_range_t v = d->v - d->state.lower;
-	const arcd_char_t ch = d->getch(v, d->state.range, &prob, d->state.model);
-	zoom_in(&d->state, &prob);
+	const arcd_range_t v = d->_v - d->_state.lower;
+	const arcd_char_t ch = d->_getch(v, d->_state.range, &prob, d->_state.model);
+	zoom_in(&d->_state, &prob);
 	for (;;)
 	{
-		if (d->state.upper < RANGE_ONE_HALF)
+		if (d->_state.upper < RANGE_ONE_HALF)
 		{
-			d->state.lower = 2 * d->state.lower;
-			d->state.upper = 2 * d->state.upper;
+			d->_state.lower = 2 * d->_state.lower;
+			d->_state.upper = 2 * d->_state.upper;
 		}
-		else if (d->state.lower >= RANGE_ONE_HALF)
+		else if (d->_state.lower >= RANGE_ONE_HALF)
 		{
-			d->state.lower = 2 * (d->state.lower - RANGE_ONE_HALF);
-			d->state.upper = 2 * (d->state.upper - RANGE_ONE_HALF);
-			d->v -= RANGE_ONE_HALF;
+			d->_state.lower = 2 * (d->_state.lower - RANGE_ONE_HALF);
+			d->_state.upper = 2 * (d->_state.upper - RANGE_ONE_HALF);
+			d->_v -= RANGE_ONE_HALF;
 		}
-		else if (d->state.lower >= RANGE_ONE_FOURTHS &&
-				 d->state.upper < RANGE_THREE_FOURTHS)
+		else if (d->_state.lower >= RANGE_ONE_FOURTH &&
+				 d->_state.upper < RANGE_THREE_FOURTH)
 		{
-			d->state.lower = 2 * (d->state.lower - RANGE_ONE_FOURTHS);
-			d->state.upper = 2 * (d->state.upper - RANGE_ONE_FOURTHS);
-			d->v -= RANGE_ONE_FOURTHS;
+			d->_state.lower = 2 * (d->_state.lower - RANGE_ONE_FOURTH);
+			d->_state.upper = 2 * (d->_state.upper - RANGE_ONE_FOURTH);
+			d->_v -= RANGE_ONE_FOURTH;
 		} else {
 			break;
 		}
-		d->v = d->v << 1 | input_bit(d);
-		assert(0 <= d->v && d->v < RANGE_MAX);
+		d->_v = d->_v << 1 | input_bit(d);
+		assert(0 <= d->_v && d->_v < RANGE_MAX);
 	}
-	d->state.range = d->state.upper - d->state.lower;
+	d->_state.range = d->_state.upper - d->_state.lower;
 	return ch;
 }

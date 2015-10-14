@@ -26,22 +26,25 @@ extern "C" {
 
 /* This will work fine when N is strictly less than number of bits in underlying
  * type. However N=32 will result in undefined behavior for 32bit int, since
- * shifting past the type size is illegal. Update this if it could be a problem.
+ * shifting past the type size is illegal. That could be an issue for
+ * calculating 2^32 - 1.
  */
-#define _ARCD_2_POW_N_MINUS_1(N) ((1 << (N)) - 1)
+#define _ARCD_2_POW_N(N) (1 << (N))
 
 /* Number of bits used to represent frequency values. This values is exact -
- * maximum frequency values is 2^ARCD_FREQ_BITS - 1.
+ * maximum frequency value is 2^ARCD_FREQ_BITS - 1.
  */
 enum { ARCD_FREQ_BITS = 15 };
 /* Number of bits used to represent arithmetic coder intervals. This value is
- * NOT entirely
+ * NOT exact - maximum interval value is 2^ARCD_FREQ_BITS which formaly uses
+ * ARCD_RANGE_BITS + 1 bits. Maximum value is the only value that uses more than
+ * ARCD_RANGE_BITS bits.
  */
 enum { ARCD_RANGE_BITS = 17 };
-/* Maximum frequency value. */
-enum { ARCD_FREQ_MAX = _ARCD_2_POW_N_MINUS_1(ARCD_FREQ_BITS) };
-/* Maximum interval value. */
-enum { ARCD_RANGE_MAX = _ARCD_2_POW_N_MINUS_1(ARCD_RANGE_BITS)  + 1};
+/* Minimum and maximum frequency values. */
+enum { ARCD_FREQ_MAX = _ARCD_2_POW_N(ARCD_FREQ_BITS) - 1 };
+/* Minimum and maximum interval value. */
+enum { ARCD_RANGE_MAX = _ARCD_2_POW_N(ARCD_RANGE_BITS) };
 
 /* Alphabet symbol. Library has no particular requirements for this type. Its
  * values are transparantly passed to arcd_enc::getprob() and from
@@ -63,6 +66,10 @@ typedef unsigned arcd_range_t;
  * particular requirements for this type.
  */
 typedef unsigned char arcd_buf_t;
+/* Private type that can hold result of multiplication freq on range without
+ * overflowing.
+ */
+typedef unsigned _arcd_value_t;
 
 /* Cumulative probability of a symbol. Corresponding regular probability is
  * (upper - lower) / total. For example, if alphabet has 4 symbols (a, b, c, d)
@@ -87,7 +94,7 @@ typedef struct arcd_prob
 arcd_prob;
 
 /* Internal state shared between encoder and decoder. */
-typedef struct arcd_state
+typedef struct _arcd_state
 {
 	arcd_range_t lower;
 	arcd_range_t upper;
@@ -97,45 +104,50 @@ typedef struct arcd_state
 	void *model;
 	void *io;
 }
-arcd_state;
+_arcd_state;
 
-typedef void arcd_getprob_f(arcd_char_t ch, arcd_prob *prob, void *model);
-typedef void acrd_output_f(arcd_buf_t buf, unsigned buf_bits, void *io);
+typedef void (*arcd_getprob_t)(arcd_char_t ch, arcd_prob *prob, void *model);
+typedef void (*acrd_output_t)(arcd_buf_t buf, unsigned buf_bits, void *io);
+typedef arcd_char_t (*arcd_getch_t)(arcd_range_t v, arcd_range_t range,
+									arcd_prob *prob, void *model);
+typedef unsigned (*arcd_input_t)(arcd_buf_t *buf, void *io);
 
 /* Arithmetic encoder. Must be initialized*/
 typedef struct arcd_enc
 {
-	arcd_state _state;
+	_arcd_state _state;
 	unsigned _pending;
-	arcd_getprob_f *_getprob;
-	acrd_output_f *_output;
+	arcd_getprob_t _getprob;
+	acrd_output_t _output;
 }
 arcd_enc;
 
 typedef struct arcd_dec
 {
-	arcd_state state;
-	arcd_range_t v;
-	unsigned v_bits;
-	arcd_char_t (*getch)(arcd_range_t v, arcd_range_t range, arcd_prob *prob,
-						 void *model);
-	unsigned (*input)(arcd_buf_t *buf, void *io);
+	_arcd_state _state;
+	arcd_range_t _v;
+	unsigned _v_bits;
+	arcd_getch_t _getch;
+	arcd_input_t _input;
 }
 arcd_dec;
 
 void arcd_enc_init(arcd_enc *const e,
-				   arcd_getprob_f *const getprob, void *const model,
-				   acrd_output_f *const output, void *const io);
+				   const arcd_getprob_t getprob, void *const model,
+				   const acrd_output_t output, void *const io);
 void arcd_enc_put(arcd_enc *const e, const arcd_char_t ch);
 void arcd_enc_fin(arcd_enc *const e);
 
-void arcd_dec_init(arcd_dec *const d, void *const model, void *const io);
+void arcd_dec_init(arcd_dec *const d,
+				   const arcd_getch_t getch, void *const model,
+				   const arcd_input_t input, void *const io);
 arcd_char_t arcd_dec_get(arcd_dec *const d);
+
 static inline
-arcd_freq_t arcd_dec_map(const arcd_range_t v, const arcd_range_t range,
-						 const arcd_freq_t total)
+arcd_freq_t arcd_freq_scale(const arcd_range_t v, const arcd_range_t range,
+							const arcd_freq_t total)
 {
-	return  v * total / range;
+	return  (_arcd_value_t)v * total / range;
 }
 
 #ifdef __cplusplus

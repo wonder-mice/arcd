@@ -26,7 +26,7 @@ namespace
 		for (size_t i = probs->size(); 0 < i--;)
 		{
 			const arcd_prob &p = probs->at(i);
-			const arcd_freq_t vs = arcd_dec_map(v, range, p.total);
+			const arcd_freq_t vs = arcd_freq_scale(v, range, p.total);
 			if (p.lower <= vs && vs < p.upper)
 			{
 				*prob = p;
@@ -163,9 +163,8 @@ namespace
 			}
 			arcd_dec dec;
 			std::istringstream in(outstr);
-			arcd_dec_init(&dec, const_cast<model_t *>(&tc.model), &in);
-			dec.input = input;
-			dec.getch = getch;
+			arcd_dec_init(&dec, getch, const_cast<model_t *>(&tc.model),
+						  input, &in);
 			for (size_t k = 0; tc.in.size() > k; ++k)
 			{
 				const arcd_char_t ch = arcd_dec_get(&dec);

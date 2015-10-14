@@ -1,4 +1,2 @@
-* Use closed intervals
-* Define amount of bits used more strictly
 * Introduce (maybe optional) optimization with trailing zeros
 * Example - command line tool to encode/decode std to stdout
