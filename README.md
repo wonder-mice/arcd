@@ -1,12 +1,15 @@
 # arcd
 
-Simple arithmetic coding library. It produces the same output you will expect from production quality library, however it doesn't have fancy performance optimizations, so expect it to be slower. The main purpose of this library is research and experimentation. Benefits:
-* Written in C
-* Simple API
-* Easy to understand implementation
-* Easy to experiment with
+Arithmetic coding is a form of entropy encoding used in lossless data
+compression. This library provides simple easy to understand implementation of
+arithmetic coding. It produces the same output you will expect from more
+advanced libraries, however it doesn't have fancy performance optimizations.
+Goals:
+* Portable (no external dependencies, C language)
+* Easy to use (minimal straightforward API)
+* Simple to experiment with (clean, compact implementation)
 
-Key goals:
-* Allow to be used everywhere (minumal dependencies, C)
-* Simple to integrate (simple and straightforward API)
-* Easy to experiment with (simple implementation)
+Keep in mind, that for arithmetic coding to be efficient you need to build a
+decent probability model of your data. If model is accurate you can get very
+close to theoretical compression limit. This library doesn't provide any default
+models.
