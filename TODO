@@ -1,2 +1,10 @@
+* Unit test for bit input/output functions
+* Possibly switch to closed intervals for coder range: (lower, upper). 
+  Currently it is [lower, upper). But it looks like math is simplier with
+  intervals open on the right (current implimentation). But everybody else
+  use closed intervals (and also have slightly different interpretation of
+  interval mapping process).
 * Introduce (maybe optional) optimization with trailing zeros
-* Example - command line tool to encode/decode std to stdout
+  When decoder runs out of input it will emit zeros. So it's possible to
+  remove all trailing zeros from the encoder outputs. The same thing could be
+  done for 1s, but decoder will need to emit 1s when it runs out of input.
