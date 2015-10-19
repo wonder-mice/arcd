@@ -1,9 +1,9 @@
 # arcd
 
 Arithmetic coding is a form of entropy encoding used in lossless data
-compression. This library provides simple easy to understand implementation of
-arithmetic coding. It produces the same output you will expect from more
-advanced libraries, however it doesn't have fancy performance optimizations.
+compression. This library provides simple, easy to understand implementation of
+arithmetic coding. It produces same output you expect from more advanced
+libraries, however it doesn't have fancy performance optimizations.
 Goals:
 * Portable (no external dependencies, C language)
 * Easy to use (minimal straightforward API)
