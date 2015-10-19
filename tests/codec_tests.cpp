@@ -7,7 +7,6 @@
 #ifndef _countof
 #define _countof(v) (sizeof(v) / sizeof((v)[0]))
 #endif
-#define BITS(n) (8 * sizeof(n))
 
 namespace
 {
@@ -39,7 +38,7 @@ namespace
 	void output(const arcd_buf_t buf, const unsigned buf_bits, void *const io)
 	{
 		std::ostringstream *const s = static_cast<std::ostringstream *>(io);
-		for (unsigned i = buf_bits; 0 < i--;)
+		for (unsigned i = ARCD_BUF_BITS, e = ARCD_BUF_BITS - buf_bits; e < i--;)
 		{
 			s->put(1 & (buf >> i)? '1': '0');
 		}
@@ -49,12 +48,13 @@ namespace
 	{
 		std::istringstream *const s =static_cast<std::istringstream *>(io);
 		std::istringstream::char_type ch;
-		unsigned bits;
-		for (bits = 0; BITS(*buf) > bits && *s >> ch; ++bits)
+		*buf = 0;
+		unsigned bits = ARCD_BUF_BITS;
+		while (0 < bits && *s >> ch)
 		{
-			*buf = *buf << 1 | ('0' == ch? 0: 1);
+			*buf |= ('0' == ch? 0: 1) << --bits;
 		}
-		return bits;
+		return ARCD_BUF_BITS - bits;
 	}
 
 	model_t mk_model(const std::vector<arcd_range_t> &ps)
@@ -135,6 +135,8 @@ namespace
 		{"7b", mk_model({1, 3, 5, 7}), {0, 1, 2, 3}, "00000010011"},
 		{"7c", mk_model({7, 5, 3, 1}), {3, 2, 1, 0}, "11111101011"},
 		{"7d", mk_model({7, 5, 3, 1}), {0, 1, 2, 3}, "0101000110"},
+		{"8a", mk_model({1, 255, 1}), {0, 2}, "00000000111111101"},
+		{"8b", mk_model({1, 255, 1}), {2, 0}, "11111111000000001"},
 	};
 
 	bool run_tests()
