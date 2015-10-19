@@ -27,7 +27,7 @@ static const arcd_range_t RANGE_ONE_FOURTH = RANGE_MAX / 4;
 static const arcd_range_t RANGE_THREE_FOURTH = 3 * RANGE_ONE_FOURTH;
 /* Bit used to extend encoded bit stream past its end. Currently can be set to
  * either 0 or 1. However, encoder can have a small optimization to remove last
- * sequence on CONTINUATION_BITs from the output (since decoder will insert them
+ * sequence of CONTINUATION_BITs from the output (since decoder will insert them
  * back anyway).
  */
 static const unsigned CONTINUATION_BIT = 0;
@@ -39,7 +39,7 @@ static void state_init(_arcd_state *const state,
 	state->upper = RANGE_MAX;
 	state->range = RANGE_MAX - RANGE_MIN;
 	state->buf = 0;
-	state->buf_bits= 0;
+	state->buf_bits = 0;
 	state->model = model;
 	state->io = io;
 }
@@ -47,10 +47,11 @@ static void state_init(_arcd_state *const state,
 static void output_bit(arcd_enc *const e, const unsigned bit)
 {
 	assert(0 == bit || 1 == bit);
-	e->_state.buf = e->_state.buf << 1 | bit;
-	if (BITS(e->_state.buf) == ++e->_state.buf_bits)
+	e->_state.buf |= bit << (ARCD_BUF_BITS - ++e->_state.buf_bits);
+	if (ARCD_BUF_BITS == e->_state.buf_bits)
 	{
-		e->_output(e->_state.buf, e->_state.buf_bits, e->_state.io);
+		e->_output(e->_state.buf, ARCD_BUF_BITS, e->_state.io);
+		e->_state.buf = 0;
 		e->_state.buf_bits = 0;
 	}
 }
@@ -80,7 +81,11 @@ static unsigned input_bit(arcd_dec *const d)
 			return CONTINUATION_BIT;
 		}
 	}
-	return 1 & (d->_state.buf >> --d->_state.buf_bits);
+	const unsigned bit = d->_state.buf >> (ARCD_BUF_BITS - 1);
+	assert(0 == bit || 1 == bit);
+	d->_state.buf <<= 1;
+	--d->_state.buf_bits;
+	return bit;
 }
 
 static void zoom_in(_arcd_state *const state, arcd_prob *const prob)
@@ -91,9 +96,11 @@ static void zoom_in(_arcd_state *const state, arcd_prob *const prob)
 	assert(prob->lower < prob->upper);
 	assert(prob->upper <= prob->total);
 	assert(prob->total <= ARCD_FREQ_MAX);
+	assert(state->range >= prob->total);
 	const _arcd_value_t range = state->range;
 	state->upper = state->lower + prob->upper * range / prob->total;
 	state->lower = state->lower + prob->lower * range / prob->total;
+	/* Don't update range, it will be updated later by encoder or decoder. */
 }
 
 void arcd_enc_init(arcd_enc *const e,
@@ -194,13 +201,15 @@ arcd_char_t arcd_dec_get(arcd_dec *const d)
 		}
 		d->_v_bits = RANGE_BITS;
 	}
+	assert(d->_state.lower <= d->_v);
+	assert(d->_state.upper > d->_v);
 	arcd_prob prob;
 	const arcd_range_t v = d->_v - d->_state.lower;
 	const arcd_char_t ch = d->_getch(v, d->_state.range, &prob, d->_state.model);
 	zoom_in(&d->_state, &prob);
 	for (;;)
 	{
-		if (d->_state.upper < RANGE_ONE_HALF)
+		if (d->_state.upper <= RANGE_ONE_HALF)
 		{
 			d->_state.lower = 2 * d->_state.lower;
 			d->_state.upper = 2 * d->_state.upper;
@@ -212,7 +221,7 @@ arcd_char_t arcd_dec_get(arcd_dec *const d)
 			d->_v -= RANGE_ONE_HALF;
 		}
 		else if (d->_state.lower >= RANGE_ONE_FOURTH &&
-				 d->_state.upper < RANGE_THREE_FOURTH)
+				 d->_state.upper <= RANGE_THREE_FOURTH)
 		{
 			d->_state.lower = 2 * (d->_state.lower - RANGE_ONE_FOURTH);
 			d->_state.upper = 2 * (d->_state.upper - RANGE_ONE_FOURTH);

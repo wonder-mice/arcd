@@ -27,18 +27,18 @@ extern "C" {
 /* This will work fine when N is strictly less than number of bits in underlying
  * type. However N=32 will result in undefined behavior for 32bit int, since
  * shifting past the type size is illegal. That could be an issue for
- * calculating 2^32 - 1.
+ * calculating 2^32 - 1 (which is a legal 32bit int value).
  */
 #define _ARCD_2_POW_N(N) (1 << (N))
 
-/* Number of bits used to represent frequency values. This values is exact -
+/* Number of bits used to represent frequency values. This value is exact -
  * maximum frequency value is 2^ARCD_FREQ_BITS - 1.
  */
 enum { ARCD_FREQ_BITS = 15 };
 /* Number of bits used to represent arithmetic coder intervals. This value is
  * NOT exact - maximum interval value is 2^ARCD_FREQ_BITS which formaly uses
- * ARCD_RANGE_BITS + 1 bits. Maximum value is the only value that uses more than
- * ARCD_RANGE_BITS bits.
+ * ARCD_RANGE_BITS + 1 bits. Though, maximum value is the only range value that
+ * uses more than ARCD_RANGE_BITS bits.
  */
 enum { ARCD_RANGE_BITS = 17 };
 /* Minimum and maximum frequency values. */
@@ -57,7 +57,7 @@ typedef unsigned arcd_char_t;
  */
 typedef unsigned arcd_freq_t;
 /* Arithmetic coder interval or value from that interval. Should be large enough
- * to hold ARCD_RANGE_BITS bits. Valid values are in the range
+ * to hold ARCD_RANGE_BITS + 1 bits. Valid values are in the range
  * [0, ARCD_RANGE_MAX] (inclusive). Intervals themselves are closed from the
  * left and open from the right: [left, right).
  */
@@ -66,10 +66,13 @@ typedef unsigned arcd_range_t;
  * particular requirements for this type.
  */
 typedef unsigned char arcd_buf_t;
-/* Private type that can hold result of multiplication of freq on range without
+/* Private type that can hold result of arcd_freq_t * arcd_range_t without
  * overflowing.
  */
 typedef unsigned _arcd_value_t;
+
+/* Number of bits in the bit buffer. */
+#define ARCD_BUF_BITS (8 * sizeof(arcd_buf_t))
 
 /* Cumulative probability of a symbol. Corresponding regular probability is
  * (upper - lower) / total. For example, if alphabet has 4 symbols (a, b, c, d)
@@ -94,7 +97,7 @@ typedef struct arcd_prob
 arcd_prob;
 
 /* Encoder callback. Will be called once per arcd_enc_put() call. Encoder uses
- * it to get cumulative probability range for a symbol being encoded.
+ * it to get cumulative probability interval for a symbol being encoded.
  */
 typedef void (*arcd_getprob_t)(arcd_char_t ch, arcd_prob *prob, void *model);
 /* Encoder callback. Encoder uses it to output encoded binary stream. Buffer has
@@ -104,10 +107,10 @@ typedef void (*arcd_getprob_t)(arcd_char_t ch, arcd_prob *prob, void *model);
  */
 typedef void (*acrd_output_t)(arcd_buf_t buf, unsigned buf_bits, void *io);
 /* Decoder callback. Will be called once per arcd_dec_get() call. Decoder uses
- * it to get symbol with cumulative probability range that contains v / range.
- * Callback can use arcd_freq_scale() to scale v and range for current frequency
- * total value. Callback also returns corresponding cumulative probability range
- * in prob.
+ * it to get symbol with cumulative probability interval that contains value
+ * (v / range). Callback must use arcd_freq_scale() to scale v based on range
+ * and current frequency total value. Callback also returns corresponding
+ * cumulative probability interval in prob.
  */
 typedef arcd_char_t (*arcd_getch_t)(arcd_range_t v, arcd_range_t range,
 									arcd_prob *prob, void *model);
@@ -153,7 +156,7 @@ typedef struct arcd_dec
 arcd_dec;
 
 /* Initializes arithmetic encoder. Parameters model and io are for external use
- * and passed to getprob and output callbacks as is.
+ * and will be passed to getprob() and output() callbacks as is.
  */
 void arcd_enc_init(arcd_enc *const e,
 				   const arcd_getprob_t getprob, void *const model,
@@ -168,7 +171,7 @@ void arcd_enc_put(arcd_enc *const e, const arcd_char_t ch);
 void arcd_enc_fin(arcd_enc *const e);
 
 /* Initializes arithmetic decoder. Parameters model and io are for external use
- * and passed to getch and input callbacks as is.
+ * and will be passed to getch() and input() callbacks as is.
  */
 void arcd_dec_init(arcd_dec *const d,
 				   const arcd_getch_t getch, void *const model,
@@ -176,21 +179,40 @@ void arcd_dec_init(arcd_dec *const d,
 /* Decodes one symbol. Will call getch() callback once. Will call input()
  * callback 0 or more times. Because of the nature of arithmetic coder this
  * function can be called infinite times. Thus you need some whay to identify
- * the end of decoded sequence. One way is to put length at the start of encoded
- * stream. Another way is to extend alphabet by 1 additional "end of stream"
- * symbol and encode it last. In some cases length of the stream could be known
- * out of the context (e.g. chess board has 64 cells).
+ * the end of the decoded sequence. One way is to put length at the start of
+ * the encoded stream. Another way is to extend alphabet by 1 additional
+ * "end of stream" symbol and encode it last. In some cases length of the stream
+ * could be known out of the context (e.g. chess board has 64 cells).
  */
 arcd_char_t arcd_dec_get(arcd_dec *const d);
 
-/* Scales value from range (used by coder) to frequency (used by model).
- * Useful inside arcd_getch_t() callback.
+/* Scales value from coder range to model frequency interval. Must be used
+ * inside arcd_getch_t() callback to get cumulative frequency value. Inverse of
+ * what encoder does when it maps arcd_prob value on the current range.
  */
 static inline
 arcd_freq_t arcd_freq_scale(const arcd_range_t v, const arcd_range_t range,
 							const arcd_freq_t total)
 {
-	return  (_arcd_value_t)v * total / range;
+	/* This diagram can help to convince yourself that the formula below works
+	 * correctly. Encoder maps x from A to y from B. Decoder maps back y from B
+	 * to x from A. Encoder calculates y = floor(|B| * x / |A|). To reverse this
+	 * operation decoder needs to find such x that:
+	 * max x, |B| * x < |A| * (y + 1)
+	 * or, since we do integer arithmetic:
+	 * max x, |B| * x <= |A| * (y + 1) - 1
+	 * and since 0 < |B| and integer division does floor():
+	 * x = (|A| * (y + 1) - 1) / |B|
+	 *
+	 * A 0                   1                   2                   3
+	 *   |---+---+---+---+---|---+---+---+---+---|---+---+---+---+---|--> x
+	 *   |<------ |B| ------>|
+	 *
+	 *   |<-- |A| -->|
+	 *   |---+---+---|---+---+---|---+---+---|---+---+---|---+---+---|--> y
+	 * B 0           1           2           3           4           5
+	 */
+	return (((_arcd_value_t)v + 1) * total - 1) / range;
 }
 
 #ifdef __cplusplus
